@@ -27,14 +27,14 @@ enum node<L> {
 }
 
 struct smap<L: copy Eq Ord, T> {
-    let lits: ~[L];
-    let vals: ~[T];
-    let default: T;
+    lits: ~[L];
+    vals: ~[T];
+    default: T;
 }
 
 struct deriv<L: copy Eq Ord> {
-    let null: bool;
-    let d: smap<L, re>;
+    null: bool;
+    d: smap<L, re>;
 }
 
 fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> ctx<L> {
@@ -59,13 +59,13 @@ fn ctx<L: copy const Eq Ord IterBytes>() -> ctx<L> {
 }
 
 struct ctx<L: copy Eq Ord> {
-    let mut nodes: ~[node<L>];
-    let rnode: map::hashmap<node<L>, re>;
-    let mut derivs: ~[@deriv<L>];
-    let mut busy: bool;
-    let r_empty: re;
-    let r_eps: re;
-    let r_univ: re;
+    mut nodes: ~[node<L>];
+    rnode: map::hashmap<node<L>, re>;
+    mut derivs: ~[@deriv<L>];
+    mut busy: bool;
+    r_empty: re;
+    r_eps: re;
+    r_univ: re;
 
     fn intern(n: node<L>) -> re {
         let r : re;
