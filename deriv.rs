@@ -46,8 +46,11 @@ fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> ctx<L> {
         assert(added);
     }
     let derivs = ~[@deriv{ null: false, d: smap0(re(0)) }];
-    ctx{ nodes: nodes, rnode: rnode, derivs: derivs,
-         r_empty: re(0), r_eps: re(1), r_univ: re(2) }
+    let c = ctx{ nodes: nodes, rnode: rnode, derivs: derivs,
+                 r_empty: re(0), r_eps: re(1), r_univ: re(2),
+                 busy: false};
+    c.compute_derivs();
+    return c;
 }
 
 fn ctx<L: copy const Eq Ord IterBytes>() -> ctx<L> {
@@ -59,19 +62,27 @@ struct ctx<L: copy Eq Ord> {
     let mut nodes: ~[node<L>];
     let rnode: map::hashmap<node<L>, re>;
     let mut derivs: ~[@deriv<L>];
+    let mut busy: bool;
     let r_empty: re;
     let r_eps: re;
     let r_univ: re;
 
     fn intern(n: node<L>) -> re {
         let r : re;
+        let mut added = false;
         match self.rnode.find(n) {
             Some(rf) => r = rf,
             None => {
                 r = re(self.nodes.len());
                 vec::push(self.nodes, n);
                 self.rnode.insert(n, r);
+                added = true;
             }
+        }
+        if added && !self.busy {
+            self.busy = true;
+            self.compute_derivs();
+            self.busy = false;
         }
         return r;
     }
