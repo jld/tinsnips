@@ -179,8 +179,41 @@ struct ctx<L: copy Eq Ord> {
         }
     }
 
+    fn dump(named: &[(~str, re)], ltos: pure fn(l: L) -> ~str) {
+        (do named.map |sr| {
+            match sr { (s,r) => fmt!("%s = e%u", s, *r) }
+        }).iter(|s| io::println(s));
+        (do self.nodes.mapi |i, n| {
+            let s = match n {
+                epsilon => ~"ε",
+                lit(l) => ltos(l),
+                seq(r0, r1) => fmt!("e%u + e%u", *r0, *r1),
+                or(@rs) if rs.len() == 0 => ~"∅",
+                or(@rs) => str::connect(vec::map(rs, |r| fmt!("e%u", *r)),
+                                        " | "),
+                star(r) => fmt!("e%u*", *r),
+                not(r) => fmt!("!e%u", *r)
+            };
+            fmt!("e%u = %s", i, s)
+        }).iter(|s| io::println(s));
+        (do self.derivs.mapi |i, d| {
+            let s_eps = fmt!("e%u %c ε", i, if d.null { '∋' } else { '∌' });
+            let v_derivs = do d.d.lits.mapi |j, l| {
+                fmt!("d%se%u = e%u", ltos(l), i, *(d.d.vals[j]))
+            };
+            let s_dfl = fmt!("d_e%u = e%u", i, *(d.d.default));
+            ~[s_eps] + v_derivs + ~[s_dfl]
+        }).iter(|v| v.iter(|s| io::println(s)));
+    }
 }
 
+fn dump_u8ctx(c: ctx<u8>, named: &[(~str, re)]) {
+    pure fn btos(&&b: u8) -> ~str {
+        if 32 < b && b < 127 { fmt!("'%c'", b as char) } 
+        else { fmt!("'\\%o'", b as uint) }
+    }
+    c.dump(named, btos);
+}
 
 
 pure fn smap_map<L: copy Eq Ord, T, U>(m: smap<L, T>, 
