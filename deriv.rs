@@ -179,7 +179,7 @@ struct ctx<L: copy Eq Ord> {
         }
     }
 
-    fn dump(named: &[(~str, re)], ltos: pure fn(l: L) -> ~str) {
+    fn dump_with_fn(named: &[(~str, re)], ltos: pure fn(l: L) -> ~str) {
         (do named.map |sr| {
             match sr { (s,r) => fmt!("%s = e%u", s, *r) }
         }).iter(|s| io::println(s));
@@ -207,12 +207,18 @@ struct ctx<L: copy Eq Ord> {
     }
 }
 
-fn dump_u8ctx(c: ctx<u8>, named: &[(~str, re)]) {
-    pure fn btos(&&b: u8) -> ~str {
-        if 32 < b && b < 127 { fmt!("'%c'", b as char) } 
-        else { fmt!("'\\%o'", b as uint) }
+impl ctx<u8> {
+    fn str(s: &str) -> re {
+        self.seqv(str::byte_slice(s, |v| v.map(|b| self.lit(b))))
     }
-    c.dump(named, btos);
+
+    fn dump(named: &[(~str, re)]) {
+        pure fn btos(&&b: u8) -> ~str {
+            if 32 < b && b < 127 { fmt!("'%c'", b as char) } 
+            else { fmt!("'\\%o'", b as uint) }
+        }
+        self.dump_with_fn(named, btos);
+    }
 }
 
 
