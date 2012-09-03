@@ -6,74 +6,74 @@ import to_bytes::{IterBytes,
                   iter_be_bytes_2,iter_be_bytes_3};
 import hash::Hash;
 
-enum re = uint;
-impl re : Eq {
-    pure fn eq(&&other: re) -> bool { *self == *other }
+enum RE = uint;
+impl RE : Eq {
+    pure fn eq(&&other: RE) -> bool { *self == *other }
 }
-impl re : Ord {
-    pure fn lt(&&other: re) -> bool { *self < *other }
-    pure fn le(&&other: re) -> bool { *self <= *other }
-    pure fn ge(&&other: re) -> bool { *self >= *other }
-    pure fn gt(&&other: re) -> bool { *self > *other }
-}
-
-enum node<L> {
-    epsilon,
-    lit(L),
-    seq(re, re),
-    or(@~[re]),
-    star(re),
-    not(re)
+impl RE : Ord {
+    pure fn lt(&&other: RE) -> bool { *self < *other }
+    pure fn le(&&other: RE) -> bool { *self <= *other }
+    pure fn ge(&&other: RE) -> bool { *self >= *other }
+    pure fn gt(&&other: RE) -> bool { *self > *other }
 }
 
-struct smap<L: copy Eq Ord, T> {
+enum Node<L> {
+    Epsilon,
+    Lit(L),
+    Seq(RE, RE),
+    Or(@~[RE]),
+    Star(RE),
+    Not(RE)
+}
+
+struct SMap<L: copy Eq Ord, T> {
     lits: ~[L];
     vals: ~[T];
     default: T;
 }
 
-struct deriv<L: copy Eq Ord> {
+struct Deriv<L: copy Eq Ord> {
     null: bool;
-    d: smap<L, re>;
+    d: SMap<L, RE>;
 }
 
-fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> ctx<L> {
-    let nodes = ~[or(@~[]), epsilon, not(re(0))];
-    let rnode = map::hashmap::<node<L>, re>(|n| n.hash_keyed(k0, k1) as uint,
+fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> Ctx<L> {
+    let nodes = ~[Or(@~[]), Epsilon, Not(RE(0))];
+    let rnode = map::hashmap::<Node<L>, RE>(|n| n.hash_keyed(k0, k1) as uint,
                                             core::cmp::eq);
     do nodes.iteri |i, n| {
-        let added = rnode.insert(n, re(i));
+        let added = rnode.insert(n, RE(i));
         assert(added);
     }
-    let derivs = ~[@deriv{ null: false, d: smap0(re(0)) }];
-    let c = ctx{ nodes: nodes, rnode: rnode, derivs: derivs,
-                 r_empty: re(0), r_eps: re(1), r_univ: re(2),
+    let derivs = ~[@Deriv{ null: false, d: smap0(RE(0)) }];
+    let c = Ctx{ nodes: nodes, rnode: rnode, derivs: derivs,
+                 r_empty: RE(0), r_eps: RE(1), r_univ: RE(2),
                  busy: false};
     c.compute_derivs();
     return c;
 }
 
-fn ctx<L: copy const Eq Ord IterBytes>() -> ctx<L> {
+fn ctx<L: copy const Eq Ord IterBytes>() -> Ctx<L> {
     let r = rand::Rng();
     keyed_ctx(r.gen_u64(), r.gen_u64())
 }
 
-struct ctx<L: copy Eq Ord> {
-    mut nodes: ~[node<L>];
-    rnode: map::hashmap<node<L>, re>;
-    mut derivs: ~[@deriv<L>];
+struct Ctx<L: copy Eq Ord> {
+    mut nodes: ~[Node<L>];
+    rnode: map::hashmap<Node<L>, RE>;
+    mut derivs: ~[@Deriv<L>];
     mut busy: bool;
-    r_empty: re;
-    r_eps: re;
-    r_univ: re;
+    r_empty: RE;
+    r_eps: RE;
+    r_univ: RE;
 
-    fn intern(n: node<L>) -> re {
-        let r : re;
+    fn intern(n: Node<L>) -> RE {
+        let r : RE;
         let mut added = false;
         match self.rnode.find(n) {
             Some(rf) => r = rf,
             None => {
-                r = re(self.nodes.len());
+                r = RE(self.nodes.len());
                 vec::push(self.nodes, n);
                 self.rnode.insert(n, r);
                 added = true;
@@ -86,48 +86,48 @@ struct ctx<L: copy Eq Ord> {
         }
         return r;
     }
-    fn empty() -> re { self.r_empty }
-    fn epsilon() -> re { self.r_eps }
-    fn univ() -> re { self.r_univ }
-    fn lit(l: L) -> re { self.intern(lit(l)) }
+    fn empty() -> RE { self.r_empty }
+    fn epsilon() -> RE { self.r_eps }
+    fn univ() -> RE { self.r_univ }
+    fn lit(l: L) -> RE { self.intern(Lit(l)) }
 
-    fn seq(r0: re, r1: re) -> re {
+    fn seq(r0: RE, r1: RE) -> RE {
         if r0 == self.r_empty || r1 == self.r_eps { return r0; }
         if r1 == self.r_empty || r0 == self.r_eps { return r1; }
         match copy self.nodes[*r0] {
-            seq(r00, r01) => self.intern(seq(r00, self.seq(r01, r1))),
-            _ => self.intern(seq(r0, r1))
+            Seq(r00, r01) => self.intern(Seq(r00, self.seq(r01, r1))),
+            _ => self.intern(Seq(r0, r1))
         }
     }
     
-    fn star(r: re) -> re {
+    fn star(r: RE) -> RE {
         if r == self.r_empty || r == self.r_eps || r == self.r_univ {
             return r;
         }
         match self.nodes[*r] {
-            star(_) => r,
-            _ => self.intern(star(r))
+            Star(_) => r,
+            _ => self.intern(Star(r))
         }
     }
 
-    fn not(r: re) -> re {
+    fn not(r: RE) -> RE {
         match self.nodes[*r] {
-            not(nr) => nr,
-            _ => self.intern(not(r))
+            Not(nr) => nr,
+            _ => self.intern(Not(r))
         }
     }
 
-    fn and(rs: &[re]) -> re {
+    fn and(rs: &[RE]) -> RE {
         self.not(self.or(rs.map(|ri| self.not(ri))))
     }
 
-    fn or(rs: &[re]) -> re {
+    fn or(rs: &[RE]) -> RE {
         let mut cases = ~[mut];
         let mut saw_univ = false;
         for rs.each |r| {
             if r == self.r_univ { saw_univ = true; break }
             match copy self.nodes[*r] {
-                or(rs) => vec::push_all(cases, *rs),
+                Or(rs) => vec::push_all(cases, *rs),
                 _ => vec::push(cases, r)
             }
         }
@@ -137,11 +137,11 @@ struct ctx<L: copy Eq Ord> {
         if cases.len() == 1 {
             cases[0]
         } else {
-            self.intern(or(@vec::from_mut(cases)))
+            self.intern(Or(@vec::from_mut(cases)))
         }
     }
 
-    fn seqv(rs: &[re]) -> re {
+    fn seqv(rs: &[RE]) -> RE {
         let mut acc = self.epsilon();
         do rs.riter |r| {
             acc = self.seq(r, acc);
@@ -151,36 +151,36 @@ struct ctx<L: copy Eq Ord> {
 
     fn compute_derivs() {
         while self.derivs.len() < self.nodes.len() {
-            let rn = re(self.derivs.len());
+            let rn = RE(self.derivs.len());
             let d = match copy self.nodes[*rn] {
-                epsilon => deriv{ null: true, d: smap0(self.empty()) },
-                lit(l) => deriv{ null: false, d: smap1(l, self.epsilon(),
+                Epsilon => Deriv{ null: true, d: smap0(self.empty()) },
+                Lit(l) => Deriv{ null: false, d: smap1(l, self.epsilon(),
                                                        self.empty()) },
-                not(r) => {
+                Not(r) => {
                     let dr = self.derivs[*r];
-                    deriv{ null: !dr.null,
+                    Deriv{ null: !dr.null,
                            d: smap_map(dr.d, |ri| self.not(ri)) }
                 }
-                star(r) => {
+                Star(r) => {
                     let dr = self.derivs[*r];
-                    deriv{ null: true,
+                    Deriv{ null: true,
                           d: smap_map(dr.d, |ri| self.seq(ri, rn)) }
                 }
-                or(rs) => {
+                Or(rs) => {
                     let amap = smap_reduce(*rs, |r| smap_map(self.derivs[*r].d,
                                                              |nr| ~[nr]),
                                            |v0, v1| v0 + v1);
-                    deriv{ null: vec::any(*rs, |r| self.derivs[*r].null),
+                    Deriv{ null: vec::any(*rs, |r| self.derivs[*r].null),
                            d: smap_map(amap, |nrs| self.or(nrs)) }
                 }
-                seq(r0, r1) => {
+                Seq(r0, r1) => {
                     let dr0 = self.derivs[*r0];
                     let tmp = smap_map(dr0.d, |ri| self.seq(ri, r1));
                     if !dr0.null {
-                        deriv{ null: false, d: tmp }
+                        Deriv{ null: false, d: tmp }
                     } else {
                         let dr1 = self.derivs[*r1];
-                        deriv{ null: dr1.null, 
+                        Deriv{ null: dr1.null, 
                                d: smap_add(tmp, dr1.d,
                                            |r0, r1| self.or(~[r0, r1])) }
                     }
@@ -190,20 +190,20 @@ struct ctx<L: copy Eq Ord> {
         }
     }
 
-    fn dump_with_fn(named: &[(~str, re)], ltos: pure fn(l: L) -> ~str) {
+    fn dump_with_fn(named: &[(~str, RE)], ltos: pure fn(l: L) -> ~str) {
         (do named.map |sr| {
             match sr { (s,r) => fmt!("%s = e%u", s, *r) }
         }).iter(|s| io::println(s));
         (do self.nodes.mapi |i, n| {
             let s = match n {
-                epsilon => ~"ε",
-                lit(l) => ltos(l),
-                seq(r0, r1) => fmt!("e%u + e%u", *r0, *r1),
-                or(@rs) if rs.len() == 0 => ~"∅",
-                or(@rs) => str::connect(vec::map(rs, |r| fmt!("e%u", *r)),
+                Epsilon => ~"ε",
+                Lit(l) => ltos(l),
+                Seq(r0, r1) => fmt!("e%u + e%u", *r0, *r1),
+                Or(@rs) if rs.len() == 0 => ~"∅",
+                Or(@rs) => str::connect(vec::map(rs, |r| fmt!("e%u", *r)),
                                         " | "),
-                star(r) => fmt!("e%u*", *r),
-                not(r) => fmt!("!e%u", *r)
+                Star(r) => fmt!("e%u*", *r),
+                Not(r) => fmt!("!e%u", *r)
             };
             fmt!("e%u = %s", i, s)
         }).iter(|s| io::println(s));
@@ -218,12 +218,12 @@ struct ctx<L: copy Eq Ord> {
     }
 }
 
-impl ctx<u8> {
-    fn str(s: &str) -> re {
+impl Ctx<u8> {
+    fn str(s: &str) -> RE {
         self.seqv(str::byte_slice(s, |v| v.map(|b| self.lit(b))))
     }
 
-    fn dump(named: &[(~str, re)]) {
+    fn dump(named: &[(~str, RE)]) {
         pure fn btos(&&b: u8) -> ~str {
             if 32 < b && b < 127 { fmt!("'%c'", b as char) } 
             else { fmt!("'\\%o'", b as uint) }
@@ -233,16 +233,16 @@ impl ctx<u8> {
 }
 
 
-pure fn smap_map<L: copy Eq Ord, T, U>(m: smap<L, T>, 
-                                  f: fn(v: T) -> U) -> smap<L, U>
+pure fn smap_map<L: copy Eq Ord, T, U>(m: SMap<L, T>, 
+                                  f: fn(v: T) -> U) -> SMap<L, U>
 {
-    smap{ lits: m.lits,
+    SMap{ lits: m.lits,
           vals: vec::map(m.vals, f),
           default: f(m.default) }
 }
 
-fn smap_add<L: copy Eq Ord, T, U, V>(m0: smap<L, T>, m1: smap<L, U>,
-                                     f: fn(v0: T, v1: U) -> V) -> smap<L, V>
+fn smap_add<L: copy Eq Ord, T, U, V>(m0: SMap<L, T>, m1: SMap<L, U>,
+                                     f: fn(v0: T, v1: U) -> V) -> SMap<L, V>
 {
     let mut la = ~[], va = ~[], i0 = 0, i1 = 0;
     let dfl = f(m0.default, m1.default);
@@ -271,12 +271,12 @@ fn smap_add<L: copy Eq Ord, T, U, V>(m0: smap<L, T>, m1: smap<L, U>,
             vec::push(va, v);
         }
     }
-    smap{ lits: la, vals: va, default: dfl }
+    SMap{ lits: la, vals: va, default: dfl }
 }
 
 fn smap_reduce<L: copy Eq Ord, T, I>(ms: &[I],
-                                     f: fn(i: I) -> smap<L, T>,
-                                     g: fn(v0: T, v1: T) -> T) -> smap<L, T>
+                                     f: fn(i: I) -> SMap<L, T>,
+                                     g: fn(v0: T, v1: T) -> T) -> SMap<L, T>
 {
     assert(ms.len() > 0);
     if (ms.len() == 1) {
@@ -288,55 +288,55 @@ fn smap_reduce<L: copy Eq Ord, T, I>(ms: &[I],
     }
 }
 
-fn smap0<L: copy Eq Ord, T>(+dfl: T) -> smap<L, T>
+fn smap0<L: copy Eq Ord, T>(+dfl: T) -> SMap<L, T>
 {
-    smap{ lits: ~[], vals: ~[], default: dfl }
+    SMap{ lits: ~[], vals: ~[], default: dfl }
 }
 
-fn smap1<L: copy Eq Ord, T>(l: L, +v: T, +dfl: T) -> smap<L, T>
+fn smap1<L: copy Eq Ord, T>(l: L, +v: T, +dfl: T) -> SMap<L, T>
 {
-    smap{ lits: ~[l], vals: ~[v], default: dfl }
+    SMap{ lits: ~[l], vals: ~[v], default: dfl }
 }
 
 
-impl re : IterBytes {
+impl RE : IterBytes {
     fn iter_le_bytes(f: to_bytes::Cb) { (*self).iter_le_bytes(f) }
     fn iter_be_bytes(f: to_bytes::Cb) { (*self).iter_be_bytes(f) }
 }
-impl<L: IterBytes> node<L> : IterBytes {
+impl<L: IterBytes> Node<L> : IterBytes {
     fn iter_le_bytes(f: to_bytes::Cb) {
         match self {
-            epsilon => 0u.iter_le_bytes(f),
-            lit(ref l) => iter_le_bytes_2(&1u, l, f),
-            seq(ref r0, ref r1) => iter_le_bytes_3(&2u, r0, r1, f),
-            or(rs) => iter_le_bytes_2(&3u, &to_r(*rs), f),
-            star(ref r) => iter_le_bytes_2(&4u, r, f),
-            not(ref r) => iter_le_bytes_2(&5u, r, f)
+            Epsilon => 0u.iter_le_bytes(f),
+            Lit(ref l) => iter_le_bytes_2(&1u, l, f),
+            Seq(ref r0, ref r1) => iter_le_bytes_3(&2u, r0, r1, f),
+            Or(rs) => iter_le_bytes_2(&3u, &to_r(*rs), f),
+            Star(ref r) => iter_le_bytes_2(&4u, r, f),
+            Not(ref r) => iter_le_bytes_2(&5u, r, f)
         }
     }
     fn iter_be_bytes(f: to_bytes::Cb) {
         match self {
-            epsilon => 0u.iter_be_bytes(f),
-            lit(ref l) => iter_be_bytes_2(&1u, l, f),
-            seq(ref r0, ref r1) => iter_be_bytes_3(&2u, r0, r1, f),
-            or(rs) => iter_be_bytes_2(&3u, &to_r(*rs), f),
-            star(ref r) => iter_be_bytes_2(&4u, r, f),
-            not(ref r) => iter_be_bytes_2(&5u, r, f)
+            Epsilon => 0u.iter_be_bytes(f),
+            Lit(ref l) => iter_be_bytes_2(&1u, l, f),
+            Seq(ref r0, ref r1) => iter_be_bytes_3(&2u, r0, r1, f),
+            Or(rs) => iter_be_bytes_2(&3u, &to_r(*rs), f),
+            Star(ref r) => iter_be_bytes_2(&4u, r, f),
+            Not(ref r) => iter_be_bytes_2(&5u, r, f)
         }
     }
 }
 fn to_r<A>(v: &r/[const A]) -> &r/[const A] { v } // XXX
 
-impl<L: Eq> node<L> : Eq {
-    pure fn eq(&&other: node<L>) -> bool {
+impl<L: Eq> Node<L> : Eq {
+    pure fn eq(&&other: Node<L>) -> bool {
         match self {
-            epsilon => match other { epsilon => true, _ => false },
-            lit(ls) => match other { lit(lo) => ls == lo, _ => false },
-            seq(rs0, rs1) => match other { seq(ro0, ro1) => rs0 == ro0
+            Epsilon => match other { Epsilon => true, _ => false },
+            Lit(ls) => match other { Lit(lo) => ls == lo, _ => false },
+            Seq(rs0, rs1) => match other { Seq(ro0, ro1) => rs0 == ro0
                                               && rs1 == ro1, _ => false },
-            or(rss) => match other { or(ros) => *rss == *ros, _ => false },
-            star(rs) => match other { star(ro) => rs == ro, _ => false },
-            not(rs) => match other { not(ro) => rs == ro, _ => false },
+            Or(rss) => match other { Or(ros) => *rss == *ros, _ => false },
+            Star(rs) => match other { Star(ro) => rs == ro, _ => false },
+            Not(rs) => match other { Not(ro) => rs == ro, _ => false },
         }
     }
 }
