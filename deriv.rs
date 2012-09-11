@@ -1,14 +1,13 @@
 use std;
-import std::{sort,map};
-import cmp::{Eq,Ord};
-import to_bytes::{IterBytes,
-                  iter_le_bytes_2,iter_le_bytes_3,
-                  iter_be_bytes_2,iter_be_bytes_3};
-import hash::Hash;
+use std::{sort,map};
+use cmp::{Eq,Ord};
+use to_bytes::{IterBytes,iter_bytes_2,iter_bytes_3};
+use hash::Hash;
 
 enum RE = uint;
 impl RE : Eq {
     pure fn eq(&&other: RE) -> bool { *self == *other }
+    pure fn ne(&&other: RE) -> bool { *self != *other }
 }
 impl RE : Ord {
     pure fn lt(&&other: RE) -> bool { *self < *other }
@@ -26,21 +25,20 @@ enum Node<L> {
     Not(RE)
 }
 
-struct SMap<L: copy Eq Ord, T> {
-    lits: ~[L];
-    vals: ~[T];
-    default: T;
+struct SMap<L: Copy Eq Ord, T> {
+    lits: ~[L],
+    vals: ~[T],
+    default: T
 }
 
-struct Deriv<L: copy Eq Ord> {
-    null: bool;
-    d: SMap<L, RE>;
+struct Deriv<L: Copy Eq Ord> {
+    null: bool,
+    d: SMap<L, RE>
 }
 
-fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> Ctx<L> {
+fn ctx<L: Copy Const Eq Ord IterBytes>() -> Ctx<L> {
     let nodes = ~[Or(@~[]), Epsilon, Not(RE(0))];
-    let rnode = map::hashmap::<Node<L>, RE>(|n| n.hash_keyed(k0, k1) as uint,
-                                            core::cmp::eq);
+    let rnode = map::hashmap::<Node<L>, RE>();
     do nodes.iteri |i, n| {
         let added = rnode.insert(n, RE(i));
         assert(added);
@@ -53,19 +51,14 @@ fn keyed_ctx<L: copy const Eq Ord IterBytes>(k0: u64, k1: u64) -> Ctx<L> {
     return c;
 }
 
-fn ctx<L: copy const Eq Ord IterBytes>() -> Ctx<L> {
-    let r = rand::Rng();
-    keyed_ctx(r.gen_u64(), r.gen_u64())
-}
-
-struct Ctx<L: copy Eq Ord> {
-    mut nodes: ~[Node<L>];
-    rnode: map::hashmap<Node<L>, RE>;
-    mut derivs: ~[@Deriv<L>];
-    mut busy: bool;
-    r_empty: RE;
-    r_eps: RE;
-    r_univ: RE;
+struct Ctx<L: Copy Eq Ord IterBytes> {
+    mut nodes: ~[Node<L>],
+    rnode: map::hashmap<Node<L>, RE>,
+    mut derivs: ~[@Deriv<L>],
+    mut busy: bool,
+    r_empty: RE,
+    r_eps: RE,
+    r_univ: RE,
 
     fn intern(n: Node<L>) -> RE {
         let r : RE;
@@ -133,7 +126,7 @@ struct Ctx<L: copy Eq Ord> {
         }
         if saw_univ { return self.univ(); }
         sort::quick_sort3(cases);
-        vec::unique(cases);
+        vec::dedup(cases);
         if cases.len() == 1 {
             cases[0]
         } else {
@@ -233,7 +226,7 @@ impl Ctx<u8> {
 }
 
 
-pure fn smap_map<L: copy Eq Ord, T, U>(m: SMap<L, T>, 
+pure fn smap_map<L: Copy Eq Ord, T, U>(m: SMap<L, T>, 
                                   f: fn(v: T) -> U) -> SMap<L, U>
 {
     SMap{ lits: m.lits,
@@ -241,7 +234,7 @@ pure fn smap_map<L: copy Eq Ord, T, U>(m: SMap<L, T>,
           default: f(m.default) }
 }
 
-fn smap_add<L: copy Eq Ord, T, U, V>(m0: SMap<L, T>, m1: SMap<L, U>,
+fn smap_add<L: Copy Eq Ord, T, U, V>(m0: SMap<L, T>, m1: SMap<L, U>,
                                      f: fn(v0: T, v1: U) -> V) -> SMap<L, V>
 {
     let mut la = ~[], va = ~[], i0 = 0, i1 = 0;
@@ -274,7 +267,7 @@ fn smap_add<L: copy Eq Ord, T, U, V>(m0: SMap<L, T>, m1: SMap<L, U>,
     SMap{ lits: la, vals: va, default: dfl }
 }
 
-fn smap_reduce<L: copy Eq Ord, T, I>(ms: &[I],
+fn smap_reduce<L: Copy Eq Ord, T, I>(ms: &[I],
                                      f: fn(i: I) -> SMap<L, T>,
                                      g: fn(v0: T, v1: T) -> T) -> SMap<L, T>
 {
@@ -288,40 +281,29 @@ fn smap_reduce<L: copy Eq Ord, T, I>(ms: &[I],
     }
 }
 
-fn smap0<L: copy Eq Ord, T>(+dfl: T) -> SMap<L, T>
+fn smap0<L: Copy Eq Ord, T>(+dfl: T) -> SMap<L, T>
 {
     SMap{ lits: ~[], vals: ~[], default: dfl }
 }
 
-fn smap1<L: copy Eq Ord, T>(l: L, +v: T, +dfl: T) -> SMap<L, T>
+fn smap1<L: Copy Eq Ord, T>(l: L, +v: T, +dfl: T) -> SMap<L, T>
 {
     SMap{ lits: ~[l], vals: ~[v], default: dfl }
 }
 
 
 impl RE : IterBytes {
-    fn iter_le_bytes(f: to_bytes::Cb) { (*self).iter_le_bytes(f) }
-    fn iter_be_bytes(f: to_bytes::Cb) { (*self).iter_be_bytes(f) }
+    fn iter_bytes(e: bool, f: to_bytes::Cb) { (*self).iter_bytes(e, f) }
 }
 impl<L: IterBytes> Node<L> : IterBytes {
-    fn iter_le_bytes(f: to_bytes::Cb) {
+    fn iter_bytes(e: bool, f: to_bytes::Cb) {
         match self {
-            Epsilon => 0u.iter_le_bytes(f),
-            Lit(ref l) => iter_le_bytes_2(&1u, l, f),
-            Seq(ref r0, ref r1) => iter_le_bytes_3(&2u, r0, r1, f),
-            Or(rs) => iter_le_bytes_2(&3u, &to_r(*rs), f),
-            Star(ref r) => iter_le_bytes_2(&4u, r, f),
-            Not(ref r) => iter_le_bytes_2(&5u, r, f)
-        }
-    }
-    fn iter_be_bytes(f: to_bytes::Cb) {
-        match self {
-            Epsilon => 0u.iter_be_bytes(f),
-            Lit(ref l) => iter_be_bytes_2(&1u, l, f),
-            Seq(ref r0, ref r1) => iter_be_bytes_3(&2u, r0, r1, f),
-            Or(rs) => iter_be_bytes_2(&3u, &to_r(*rs), f),
-            Star(ref r) => iter_be_bytes_2(&4u, r, f),
-            Not(ref r) => iter_be_bytes_2(&5u, r, f)
+            Epsilon => 0u.iter_bytes(e, f),
+            Lit(ref l) => iter_bytes_2(&1u, l, e, f),
+            Seq(ref r0, ref r1) => iter_bytes_3(&2u, r0, r1, e, f),
+            Or(rs) => iter_bytes_2(&3u, &to_r(*rs), e, f),
+            Star(ref r) => iter_bytes_2(&4u, r, e, f),
+            Not(ref r) => iter_bytes_2(&5u, r, e, f)
         }
     }
 }
@@ -339,4 +321,5 @@ impl<L: Eq> Node<L> : Eq {
             Not(rs) => match other { Not(ro) => rs == ro, _ => false },
         }
     }
+    pure fn ne(&&other: Node<L>) -> bool { !(self == other) }
 }
