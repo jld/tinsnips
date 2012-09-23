@@ -58,8 +58,10 @@ struct Ctx<L: Copy Eq Ord IterBytes> {
     mut busy: bool,
     r_empty: RE,
     r_eps: RE,
-    r_univ: RE,
+    r_univ: RE
+}
 
+impl<L: Copy Eq Ord IterBytes> Ctx<L> {
     fn intern(n: Node<L>) -> RE {
         let r : RE;
         let mut added = false;
